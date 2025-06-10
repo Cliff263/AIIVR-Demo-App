@@ -3,11 +3,20 @@ plugins {
     id("com.google.gms.google-services") version "4.4.2" apply false
 }
 
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.google.gms:google-services:4.4.2")
+    }
+}
+
 allprojects {
     repositories {
         google()
         mavenCentral()
-        google() // For Google services plugin
     }
 }
 
@@ -18,14 +27,11 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+
 subprojects {
     project.evaluationDependsOn(":app")
 }
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
-}
-
-dependencies {
-    classpath("com.google.gms:google-services:4.4.2") apply false // Google services Gradle plugin
 }

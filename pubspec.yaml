@@ -54,7 +54,7 @@ dependencies:
   shimmer: ^3.0.0
 
   # Utils
-  intl: ^0.19.0
+  intl: ^0.20.0
   logger: ^2.0.2+1
   url_launcher: ^6.2.4
 
@@ -67,7 +67,10 @@ dependencies:
   firebase_auth: ^4.15.3
   cloud_firestore: ^4.13.6
   firebase_messaging: ^14.7.10
-  flutter_local_notifications: ^16.3.0
+  awesome_notifications: ^0.10.1
+
+  # Logging
+  logging: ^1.2.0
 
 dev_dependencies:
   flutter_test:

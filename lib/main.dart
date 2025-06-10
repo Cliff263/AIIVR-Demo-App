@@ -11,6 +11,7 @@ import 'services/chat_service.dart';
 import 'services/query_logging_service.dart';
 import 'services/messaging_service.dart';
 import 'services/notification_service.dart';
+import 'services/sms_service.dart';
 
 // Screens
 import 'screens/home_screen.dart' as home;
@@ -27,6 +28,13 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   final logger = Logger();
   logger.i('Handling a background message: ${message.messageId}');
+  
+  // Show notification for background messages
+  await NotificationService().showNotification(
+    title: message.notification?.title ?? 'New Message',
+    body: message.notification?.body ?? 'You have a new message',
+    payload: message.data.toString(),
+  );
 }
 
 void main() async {
@@ -41,11 +49,31 @@ void main() async {
   final notificationService = NotificationService();
   await notificationService.initialize();
   
-  runApp(const MyApp());
+  // Initialize messaging service
+  final messagingService = MessagingService();
+  await messagingService.initialize();
+  
+  // Handle foreground messages
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    NotificationService().showNotification(
+      title: message.notification?.title ?? 'New Message',
+      body: message.notification?.body ?? 'You have a new message',
+      payload: message.data.toString(),
+    );
+  });
+
+  // Handle notification clicks when app is in background
+  FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    Logger().i('Message opened from background: ${message.data}');
+  });
+  
+  runApp(MyApp(messagingService: messagingService));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final MessagingService messagingService;
+  
+  const MyApp({super.key, required this.messagingService});
 
   @override
   Widget build(BuildContext context) {
@@ -54,10 +82,12 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ChatService()),
         ChangeNotifierProvider(create: (_) => QueryLoggingService()),
-        ChangeNotifierProvider(create: (_) => MessagingService()),
+        ChangeNotifierProvider.value(value: messagingService),
+        ChangeNotifierProvider(create: (_) => SMSService()),
       ],
       child: MaterialApp(
         title: 'AIIVR Demo App',
+        navigatorKey: messagingService.navigatorKey,
         theme: ThemeData(
           primarySwatch: Colors.blue,
           useMaterial3: true,

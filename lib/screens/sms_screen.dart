@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../services/sms_service.dart';
 import '../services/auth_service.dart';
@@ -11,7 +12,7 @@ class SMSScreen extends StatefulWidget {
 
 class SMSScreenState extends State<SMSScreen> {
   final SMSService _smsService = SMSService();
-  final _receiverController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _messageController = TextEditingController();
   String? _selectedStatus;
   DateTime? _startDate;
@@ -29,15 +30,35 @@ class SMSScreenState extends State<SMSScreen> {
 
   @override
   void dispose() {
-    _receiverController.dispose();
+    _phoneController.dispose();
     _messageController.dispose();
     super.dispose();
   }
 
+  String? _validatePhoneNumber(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Please enter a phone number';
+    }
+    // Basic validation for Zimbabwe phone numbers
+    final phoneRegex = RegExp(r'^\+263[7-8][0-9]{8}$');
+    if (!phoneRegex.hasMatch(value)) {
+      return 'Please enter a valid Zimbabwe phone number (e.g., +263779190068)';
+    }
+    return null;
+  }
+
   Future<void> _sendMessage() async {
-    if (_receiverController.text.isEmpty || _messageController.text.isEmpty) {
+    if (_phoneController.text.isEmpty || _messageController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill in all fields')),
+      );
+      return;
+    }
+
+    final phoneError = _validatePhoneNumber(_phoneController.text);
+    if (phoneError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(phoneError)),
       );
       return;
     }
@@ -45,10 +66,10 @@ class SMSScreenState extends State<SMSScreen> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     try {
       await _smsService.sendMessage(
-        _receiverController.text,
+        _phoneController.text,
         _messageController.text,
       );
-      _receiverController.clear();
+      _phoneController.clear();
       _messageController.clear();
       if (!mounted) return;
       scaffoldMessenger.showSnackBar(
@@ -87,7 +108,7 @@ class SMSScreenState extends State<SMSScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Messages'),
+        title: const Text('SMS Messages'),
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
@@ -106,26 +127,47 @@ class SMSScreenState extends State<SMSScreen> {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                TextField(
-                  controller: _receiverController,
+                TextFormField(
+                  controller: _phoneController,
                   decoration: const InputDecoration(
-                    labelText: 'Receiver ID',
+                    labelText: 'Phone Number',
+                    hintText: '+263779190068',
                     border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.phone),
                   ),
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(12),
+                  ],
+                  validator: _validatePhoneNumber,
+                  onChanged: (value) {
+                    if (value.length == 9 && !value.startsWith('+263')) {
+                      _phoneController.text = '+263$value';
+                      _phoneController.selection = TextSelection.fromPosition(
+                        TextPosition(offset: _phoneController.text.length),
+                      );
+                    }
+                  },
                 ),
                 const SizedBox(height: 16),
-                TextField(
+                TextFormField(
                   controller: _messageController,
                   decoration: const InputDecoration(
                     labelText: 'Message',
                     border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.message),
                   ),
                   maxLines: 3,
                 ),
                 const SizedBox(height: 16),
-                ElevatedButton(
+                ElevatedButton.icon(
                   onPressed: _sendMessage,
-                  child: const Text('Send Message'),
+                  icon: const Icon(Icons.send),
+                  label: const Text('Send SMS'),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 50),
+                  ),
                 ),
               ],
             ),
@@ -185,7 +227,7 @@ class SMSScreenState extends State<SMSScreen> {
                         vertical: 8,
                       ),
                       child: ListTile(
-                        title: Text('From: ${message['userId']}'),
+                        title: Text('To: ${message['phoneNumber']}'),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -239,12 +281,12 @@ class SMSScreenState extends State<SMSScreen> {
               labelText: 'Status',
               border: OutlineInputBorder(),
             ),
-            items: ['sent', 'delivered', 'read', 'failed'].map((status) {
-              return DropdownMenuItem(
-                value: status,
-                child: Text(status),
-              );
-            }).toList(),
+            items: const [
+              DropdownMenuItem(value: 'sending', child: Text('Sending')),
+              DropdownMenuItem(value: 'delivered', child: Text('Delivered')),
+              DropdownMenuItem(value: 'failed', child: Text('Failed')),
+              DropdownMenuItem(value: 'read', child: Text('Read')),
+            ],
             onChanged: (value) {
               setState(() => _selectedStatus = value);
               Navigator.pop(context);

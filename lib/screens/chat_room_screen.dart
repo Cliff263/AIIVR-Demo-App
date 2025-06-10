@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../services/chat_service.dart';
 
 class ChatRoomScreen extends StatefulWidget {
@@ -17,7 +18,6 @@ class ChatRoomScreen extends StatefulWidget {
 }
 
 class ChatRoomScreenState extends State<ChatRoomScreen> {
-  final ChatService _chatService = ChatService();
   final TextEditingController _messageController = TextEditingController();
   List<types.Message> _messages = [];
   final _auth = FirebaseAuth.instance;
@@ -30,12 +30,14 @@ class ChatRoomScreenState extends State<ChatRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final chatService = Provider.of<ChatService>(context);
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chat Room'),
       ),
       body: StreamBuilder<List<types.Message>>(
-        stream: _chatService.getMessages(widget.chatId),
+        stream: chatService.getMessages(widget.chatId),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
@@ -95,6 +97,7 @@ class ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   void _handleSendPressed(types.PartialText message) {
-    _chatService.sendMessage(widget.chatId, message.text);
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    chatService.sendMessage(widget.chatId, message.text);
   }
 } 

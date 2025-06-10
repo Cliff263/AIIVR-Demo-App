@@ -1,14 +1,17 @@
-import 'package:flutter/foundation.dart';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:logger/logger.dart';
+import 'package:flutter/material.dart';
+import 'notification_service.dart';
 
 class MessagingService extends ChangeNotifier {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final _logger = Logger();
+  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   bool _isLoading = false;
 
   bool get isLoading => _isLoading;
@@ -22,19 +25,57 @@ class MessagingService extends ChangeNotifier {
     );
 
     // Get FCM token
-    String? token = await _messaging.getToken();
-    if (token != null) {
-      await _saveTokenToDatabase(token);
+    final token = await _messaging.getToken();
+    _logger.i('FCM Token: $token');
+
+    // Handle token refresh
+    _messaging.onTokenRefresh.listen((token) {
+      _logger.i('FCM Token refreshed: $token');
+      _saveTokenToDatabase(token);
+    });
+
+    // Handle foreground messages
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      _logger.i('Got a message whilst in the foreground!');
+      _logger.i('Message data: ${message.data}');
+
+      if (message.notification != null) {
+        _logger.i(
+          'Message also contained a notification: ${message.notification}',
+        );
+        
+        // Show notification using Awesome Notifications
+        NotificationService().showNotification(
+          title: message.notification?.title ?? 'New Message',
+          body: message.notification?.body ?? 'You have a new message',
+          payload: message.data.toString(),
+        );
+      }
+    });
+
+    // Handle notification clicks when app is in background
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _logger.i('Message opened from background: ${message.data}');
+      _handleNotificationClick(message.data);
+    });
+  }
+
+  void _handleNotificationClick(Map<String, dynamic> data) {
+    if (data.containsKey('chatId')) {
+      navigatorKey.currentState?.pushNamed('/chat', arguments: data['chatId']);
+    } else if (data.containsKey('messageId')) {
+      navigatorKey.currentState?.pushNamed('/message', arguments: data['messageId']);
     }
+  }
 
-    // Listen to token refresh
-    _messaging.onTokenRefresh.listen(_saveTokenToDatabase);
+  Future<void> subscribeToTopic(String topic) async {
+    await _messaging.subscribeToTopic(topic);
+    _logger.i('Subscribed to topic: $topic');
+  }
 
-    // Handle incoming messages when app is in foreground
-    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
-
-    // Handle notification tap when app is in background
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleBackgroundMessage);
+  Future<void> unsubscribeFromTopic(String topic) async {
+    await _messaging.unsubscribeFromTopic(topic);
+    _logger.i('Unsubscribed from topic: $topic');
   }
 
   Future<void> _saveTokenToDatabase(String token) async {
@@ -102,19 +143,6 @@ class MessagingService extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
-  }
-
-  void _handleForegroundMessage(RemoteMessage message) {
-    _logger.i('Got a message whilst in the foreground!');
-    _logger.d('Message data: ${message.data}');
-
-    if (message.notification != null) {
-      _logger.d('Message also contained a notification: ${message.notification}');
-    }
-  }
-
-  void _handleBackgroundMessage(RemoteMessage message) {
-    _logger.i('Handling a background message: ${message.messageId}');
   }
 
   Stream<QuerySnapshot> getMessageHistory() {

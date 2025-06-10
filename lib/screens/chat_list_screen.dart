@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/chat_service.dart';
 import 'chat_room_screen.dart';
 
 class ChatListScreen extends StatelessWidget {
-  final ChatService _chatService = ChatService();
-
-  ChatListScreen({super.key});
+  const ChatListScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final chatService = Provider.of<ChatService>(context);
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Chats'),
@@ -20,7 +21,7 @@ class ChatListScreen extends StatelessWidget {
         ],
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _chatService.getUserChats(),
+        stream: chatService.getUserChats(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
@@ -65,6 +66,7 @@ class ChatListScreen extends StatelessWidget {
   }
 
   Future<void> _showNewChatDialog(BuildContext context) async {
+    final chatService = Provider.of<ChatService>(context, listen: false);
     final TextEditingController controller = TextEditingController();
     return showDialog(
       context: context,
@@ -89,7 +91,7 @@ class ChatListScreen extends StatelessWidget {
                     .map((id) => id.trim())
                     .toList();
                 try {
-                  final chatId = await _chatService.createChatRoom(participantIds);
+                  final chatId = await chatService.createChatRoom(participantIds);
                   if (context.mounted) {
                     Navigator.pop(context);
                     Navigator.push(

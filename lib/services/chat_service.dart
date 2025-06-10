@@ -2,10 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
+import 'package:logger/logger.dart';
+import 'notification_service.dart';
 
 class ChatService extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final _logger = Logger();
   // ignore: prefer_final_fields
   List<types.Message> _messages = [];
   final bool _isLoading = false;
@@ -35,30 +38,56 @@ class ChatService extends ChangeNotifier {
 
   // Send a message
   Future<void> sendMessage(String chatId, String text) async {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception('User not authenticated');
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
 
-    final message = types.TextMessage(
-      author: types.User(id: user.uid),
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      text: text,
-    );
+      // Check if chat exists
+      final chatDoc = await _firestore.collection('chats').doc(chatId).get();
+      if (!chatDoc.exists) {
+        throw Exception('Chat not found');
+      }
 
-    await _firestore
-        .collection('chats')
-        .doc(chatId)
-        .collection('messages')
-        .doc(message.id)
-        .set(message.toJson());
+      final message = types.TextMessage(
+        author: types.User(id: user.uid),
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        text: text,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+      );
 
-    // Update last message in chat room
-    await _firestore.collection('chats').doc(chatId).update({
-      'lastMessage': text,
-      'lastMessageTime': FieldValue.serverTimestamp(),
-    });
+      await _firestore
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(message.id)
+          .set(message.toJson());
 
-    _messages.add(message);
-    notifyListeners();
+      // Update last message in chat document
+      await _firestore.collection('chats').doc(chatId).update({
+        'lastMessage': text,
+        'lastMessageTime': FieldValue.serverTimestamp(),
+      });
+
+      // Get chat participants
+      final participants = List<String>.from(chatDoc.data()?['participants'] ?? []);
+
+      // Send notification to other participants
+      for (final participantId in participants) {
+        if (participantId != user.uid) {
+          await NotificationService().showChatNotification(
+            title: 'New Message',
+            body: text,
+            payload: chatId,
+          );
+        }
+      }
+
+      _messages.add(message);
+      notifyListeners();
+    } catch (e) {
+      _logger.e('Error sending message: $e');
+      rethrow;
+    }
   }
 
   // Get messages for a chat room

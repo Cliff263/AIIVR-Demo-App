@@ -1,74 +1,105 @@
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:logger/logger.dart';
+import 'package:awesome_notifications/awesome_notifications.dart';
+import 'package:flutter/material.dart';
+
+@pragma('vm:entry-point')
+Future<void> onActionReceivedMethod(ReceivedAction receivedAction) async {
+  // Handle notification action
+  debugPrint('Action received: ${receivedAction.toMap()}');
+}
+
+@pragma('vm:entry-point')
+Future<void> onNotificationCreatedMethod(ReceivedNotification receivedNotification) async {
+  // Handle notification creation
+  debugPrint('Notification created: ${receivedNotification.toMap()}');
+}
+
+@pragma('vm:entry-point')
+Future<void> onNotificationDisplayedMethod(ReceivedNotification receivedNotification) async {
+  // Handle notification display
+  debugPrint('Notification displayed: ${receivedNotification.toMap()}');
+}
+
+@pragma('vm:entry-point')
+Future<void> onDismissActionReceivedMethod(ReceivedAction receivedAction) async {
+  // Handle notification dismissal
+  debugPrint('Notification dismissed: ${receivedAction.toMap()}');
+}
 
 class NotificationService {
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
-  final _logger = Logger();
+  static final NotificationService _instance = NotificationService._internal();
+  factory NotificationService() => _instance;
+  NotificationService._internal();
 
   Future<void> initialize() async {
+    await AwesomeNotifications().initialize(
+      null, // null means use default app icon
+      [
+        NotificationChannel(
+          channelKey: 'basic_channel',
+          channelName: 'Basic Notifications',
+          channelDescription: 'Basic notification channel',
+          defaultColor: Colors.blue,
+          importance: NotificationImportance.High,
+          channelShowBadge: true,
+        ),
+        NotificationChannel(
+          channelKey: 'chat_channel',
+          channelName: 'Chat Notifications',
+          channelDescription: 'Chat notification channel',
+          defaultColor: Colors.green,
+          importance: NotificationImportance.High,
+          channelShowBadge: true,
+        ),
+      ],
+    );
+
     // Request permission for notifications
-    await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    // Initialize local notifications
-    const initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initializationSettingsIOS = DarwinInitializationSettings();
-    const initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsIOS,
-    );
-
-    await _localNotifications.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        // Handle notification tap
-        _logger.i('Notification tapped: ${response.payload}');
-      },
-    );
-
-    // Create notification channel for Android
-    const androidChannel = AndroidNotificationChannel(
-      'high_importance_channel',
-      'High Importance Notifications',
-      description: 'This channel is used for important notifications.',
-      importance: Importance.high,
-    );
-
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(androidChannel);
-
-    // Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      RemoteNotification? notification = message.notification;
-      AndroidNotification? android = message.notification?.android;
-
-      if (notification != null && android != null) {
-        _localNotifications.show(
-          notification.hashCode,
-          notification.title,
-          notification.body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              androidChannel.id,
-              androidChannel.name,
-              channelDescription: androidChannel.description,
-              icon: android.smallIcon,
-            ),
-          ),
-          payload: message.data.toString(),
-        );
+    await AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
+      if (!isAllowed) {
+        AwesomeNotifications().requestPermissionToSendNotifications();
       }
     });
 
-    // Handle notification clicks when app is in background
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      _logger.i('Message opened from background: ${message.data}');
-    });
+    // Listen to notification events
+    AwesomeNotifications().setListeners(
+      onActionReceivedMethod: onActionReceivedMethod,
+      onNotificationCreatedMethod: onNotificationCreatedMethod,
+      onNotificationDisplayedMethod: onNotificationDisplayedMethod,
+      onDismissActionReceivedMethod: onDismissActionReceivedMethod,
+    );
+  }
+
+  Future<void> showNotification({
+    required String title,
+    required String body,
+    String? payload,
+    String channelKey = 'basic_channel',
+  }) async {
+    await AwesomeNotifications().createNotification(
+      content: NotificationContent(
+        id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        channelKey: channelKey,
+        title: title,
+        body: body,
+        payload: {'data': payload ?? ''},
+      ),
+    );
+  }
+
+  Future<void> showChatNotification({
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
+    await showNotification(
+      title: title,
+      body: body,
+      payload: payload,
+      channelKey: 'chat_channel',
+    );
+  }
+
+  Future<void> cancelAllNotifications() async {
+    await AwesomeNotifications().cancelAll();
   }
 } 

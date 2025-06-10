@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1078282133118",
+    "project_id": "aiivr-demo",
+    "storage_bucket": "aiivr-demo.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1078282133118:android:707038043316b4c7a5422f",
+        "android_client_info": {
+          "package_name": "aiivr.app.demo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBLY8u_lGy-aFlOlNv61f4_ffCI8ox06GU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

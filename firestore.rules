@@ -1,0 +1,71 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isSupervisor() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'supervisor';
+    }
+    
+    function isAgent() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'agent';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isOwner(userId);
+      allow delete: if isSupervisor();
+    }
+
+    // Queries collection
+    match /queries/{queryId} {
+      allow read: if isAuthenticated() && (
+        isSupervisor() || 
+        isOwner(resource.data.userId)
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isSupervisor() || 
+        isOwner(resource.data.userId)
+      );
+      allow delete: if isSupervisor();
+    }
+
+    // Chat messages collection
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() && (
+        isSupervisor() || 
+        resource.data.participants[request.auth.uid] == true
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isSupervisor() || 
+        resource.data.participants[request.auth.uid] == true
+      );
+      allow delete: if isSupervisor();
+    }
+
+    // SMS logs collection
+    match /sms_logs/{logId} {
+      allow read: if isAuthenticated() && (
+        isSupervisor() || 
+        isOwner(resource.data.userId)
+      );
+      allow create: if isAuthenticated();
+      allow update: if isSupervisor();
+      allow delete: if isSupervisor();
+    }
+  }
+} 

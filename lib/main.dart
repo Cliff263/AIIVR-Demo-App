@@ -23,12 +23,13 @@ import 'screens/query_log_screen.dart';
 import 'screens/chat_list_screen.dart';
 import 'screens/sms_screen.dart';
 
+final _logger = Logger();
+
 // Handle background messages
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  final logger = Logger();
-  logger.i('Handling a background message: ${message.messageId}');
+  _logger.i('Handling a background message: ${message.messageId}');
   
   // Show notification for background messages
   await NotificationService().showNotification(
@@ -40,7 +41,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  
+  // Load environment variables
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    _logger.w('Warning: .env file not found. Using default values.');
+  }
+  
   await Firebase.initializeApp();
   await Hive.initFlutter();
 

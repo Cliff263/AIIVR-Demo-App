@@ -5,7 +5,7 @@ import 'chat_room_screen.dart';
 class ChatListScreen extends StatelessWidget {
   final ChatService _chatService = ChatService();
 
-  ChatListScreen({Key? key}) : super(key: key);
+  ChatListScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

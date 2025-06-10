@@ -45,7 +45,7 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +62,7 @@ class MyApp extends StatelessWidget {
           primarySwatch: Colors.blue,
           useMaterial3: true,
         ),
-        initialRoute: '/signin',
+        home: const AuthWrapper(),
         routes: {
           '/signin': (context) => const SignInScreen(),
           '/signup': (context) => const SignUpScreen(),
@@ -73,6 +73,22 @@ class MyApp extends StatelessWidget {
           '/sms': (context) => const SMSScreen(),
         },
       ),
+    );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AuthService>(
+      builder: (context, authService, _) {
+        if (authService.isAuthenticated) {
+          return const home.HomeScreen();
+        }
+        return const SignInScreen();
+      },
     );
   }
 }

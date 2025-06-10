@@ -8,9 +8,9 @@ class ChatRoomScreen extends StatefulWidget {
   final String chatId;
 
   const ChatRoomScreen({
-    Key? key,
+    super.key,
     required this.chatId,
-  }) : super(key: key);
+  });
 
   @override
   ChatRoomScreenState createState() => ChatRoomScreenState();

@@ -6,6 +6,7 @@ import '../services/query_logging_service.dart';
 import '../services/sms_service.dart';
 import 'auth/login_screen.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,15 +17,31 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  late List<Widget> _screens;
 
-  final List<Widget> _screens = [
-    const QueryLoggingScreen(),
-    const SMSScreen(),
-    const ChatScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _initializeScreens();
+  }
+
+  void _initializeScreens() {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final isSupervisor = authService.currentUser?.email?.contains('supervisor') ?? false;
+
+    _screens = [
+      const QueryLoggingScreen(),
+      const SMSScreen(),
+      const ChatScreen(),
+      if (isSupervisor) const UserManagementScreen(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
+    final authService = Provider.of<AuthService>(context);
+    final isSupervisor = authService.currentUser?.email?.contains('supervisor') ?? false;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('AIIVR Companion'),
@@ -49,19 +66,24 @@ class _HomeScreenState extends State<HomeScreen> {
         onDestinationSelected: (index) {
           setState(() => _currentIndex = index);
         },
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.history),
             label: 'Query Logs',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.sms),
             label: 'SMS',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.chat),
             label: 'Chat',
           ),
+          if (isSupervisor)
+            const NavigationDestination(
+              icon: Icon(Icons.people),
+              label: 'Users',
+            ),
         ],
       ),
     );
@@ -346,6 +368,45 @@ class ChatScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class UserManagementScreen extends StatelessWidget {
+  const UserManagementScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder(
+      stream: FirebaseFirestore.instance.collection('users').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final users = snapshot.data!.docs;
+
+        return ListView.builder(
+          itemCount: users.length,
+          itemBuilder: (context, index) {
+            final user = users[index].data();
+            return ListTile(
+              title: Text(user['email'] ?? 'No email'),
+              subtitle: Text('Role: ${user['role'] ?? 'No role'}'),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: () {
+                  // Implement user deletion
+                },
+              ),
+            );
+          },
+        );
+      },
     );
   }
 } 

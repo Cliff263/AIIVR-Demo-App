@@ -4,7 +4,7 @@ import '../services/query_logging_service.dart';
 import '../services/auth_service.dart';
 
 class QueryLogScreen extends StatefulWidget {
-  const QueryLogScreen({Key? key}) : super(key: key);
+  const QueryLogScreen({super.key});
 
   @override
   QueryLogScreenState createState() => QueryLogScreenState();

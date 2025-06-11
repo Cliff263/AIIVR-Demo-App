@@ -47,6 +47,9 @@ void main() async {
     await dotenv.load(fileName: ".env");
   } catch (e) {
     _logger.w('Warning: .env file not found. Using default values.');
+    // Set default values
+    dotenv.env['APP_NAME'] = 'AIIVR Demo App';
+    dotenv.env['APP_ENV'] = 'development';
   }
   
   await Firebase.initializeApp();
@@ -99,8 +102,38 @@ class MyApp extends StatelessWidget {
         title: 'AIIVR Demo App',
         navigatorKey: messagingService.navigatorKey,
         theme: ThemeData(
-          primarySwatch: Colors.blue,
           useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF8F5CFF),
+            primary: const Color(0xFF8F5CFF),
+            secondary: const Color(0xFF5B7CFA),
+            surface: Colors.white,
+          ),
+          scaffoldBackgroundColor: Colors.white,
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Color(0xFF8F5CFF),
+            elevation: 0,
+            centerTitle: true,
+            iconTheme: IconThemeData(color: Colors.white),
+            titleTextStyle: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          navigationBarTheme: NavigationBarThemeData(
+            backgroundColor: Colors.white,
+            indicatorColor: const Color(0xFF8F5CFF).withAlpha(26),
+            labelTextStyle: WidgetStateProperty.all(
+              const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+            iconTheme: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return const IconThemeData(color: Color(0xFF8F5CFF));
+              }
+              return const IconThemeData(color: Colors.grey);
+            }),
+          ),
         ),
         home: const AuthWrapper(),
         routes: {

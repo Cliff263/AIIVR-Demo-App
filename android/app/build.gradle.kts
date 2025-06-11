@@ -30,6 +30,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        manifestPlaceholders["GOOGLE_CLIENT_ID"] = "1078282133118-e2f7psf1tio53cavao9uuv2ntpqsenac.apps.googleusercontent.com"
     }
 
     buildTypes {
@@ -56,6 +58,9 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore")
     // Add the dependencies for any other desired Firebase products
     // https://firebase.google.com/docs/android/setup#available-libraries
+
+    // Google Play Services
+    implementation("com.google.android.gms:play-services-auth:20.7.0")
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

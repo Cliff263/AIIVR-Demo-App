@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/query_logging_service.dart';
 import '../services/auth_service.dart';
+import 'package:intl/intl.dart';
 
 class QueryLogScreen extends StatefulWidget {
   const QueryLogScreen({super.key});
@@ -13,9 +14,22 @@ class QueryLogScreen extends StatefulWidget {
 class QueryLogScreenState extends State<QueryLogScreen> {
   final QueryLoggingService _queryService = QueryLoggingService();
   QueryStatus? _selectedStatus;
-  DateTime? _startDate;
-  DateTime? _endDate;
   final _queryController = TextEditingController();
+  bool _isSupervisor = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkUserRole();
+  }
+
+  Future<void> _checkUserRole() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final userRole = await authService.getUserRole();
+    setState(() {
+      _isSupervisor = userRole == UserRole.supervisor;
+    });
+  }
 
   @override
   void dispose() {
@@ -42,194 +56,292 @@ class QueryLogScreenState extends State<QueryLogScreen> {
     }
   }
 
-  Future<void> _selectDateRange() async {
-    final DateTimeRange? picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      initialDateRange: _startDate != null && _endDate != null
-          ? DateTimeRange(start: _startDate!, end: _endDate!)
-          : null,
-    );
+  Future<void> _assignQuery(String queryId) async {
+    try {
+      final agents = await _queryService.getAgents().first;
+      if (!mounted) return;
 
-    if (picked != null) {
-      setState(() {
-        _startDate = picked.start;
-        _endDate = picked.end;
-      });
+      final selectedAgent = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Select Agent'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: agents.length,
+              itemBuilder: (context, index) {
+                final agent = agents[index];
+                return ListTile(
+                  title: Text(agent['email'] ?? 'Unknown'),
+                  onTap: () => Navigator.pop(context, agent),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+
+      if (selectedAgent != null) {
+        await _queryService.assignQuery(queryId, selectedAgent['id']);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Query assigned successfully')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _updateQueryStatus(String queryId, QueryStatus newStatus) async {
+    try {
+      await _queryService.updateQueryStatus(queryId, newStatus);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Status updated successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _deleteQuery(String queryId) async {
+    try {
+      await _queryService.deleteQuery(queryId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Query deleted successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context);
-    final isSupervisor = authService.currentUser?.email?.contains('supervisor') ?? false;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Query Logs'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                builder: (context) => _buildFilterSheet(),
-              );
-            },
-          ),
-        ],
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF8F5CFF), Color(0xFF5B7CFA)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _queryController,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter your query',
-                      border: OutlineInputBorder(),
-                    ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            if (!_isSupervisor) // Agent view
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                elevation: 8,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _queryController,
+                          decoration: const InputDecoration(
+                            hintText: 'Enter your query',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton.icon(
+                        onPressed: _createQuery,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Log Query'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF8F5CFF),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                ElevatedButton(
-                  onPressed: _createQuery,
-                  child: const Text('Log Query'),
-                ),
-              ],
-            ),
-          ),
-          if (_selectedStatus != null || _startDate != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Wrap(
-                spacing: 8,
-                children: [
-                  if (_selectedStatus != null)
-                    Chip(
-                      label: Text('Status: ${_selectedStatus.toString().split('.').last}'),
-                      onDeleted: () => setState(() => _selectedStatus = null),
-                    ),
-                  if (_startDate != null && _endDate != null)
-                    Chip(
-                      label: Text(
-                        'Date: ${_startDate!.toString().split(' ')[0]} - ${_endDate!.toString().split(' ')[0]}',
+              ),
+            const SizedBox(height: 24),
+            if (_isSupervisor) // Supervisor view
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                elevation: 8,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      DropdownButtonFormField<QueryStatus>(
+                        value: _selectedStatus,
+                        decoration: const InputDecoration(
+                          labelText: 'Filter by Status',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: QueryStatus.values.map((status) {
+                          return DropdownMenuItem(
+                            value: status,
+                            child: Text(status.toString().split('.').last.toUpperCase()),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setState(() => _selectedStatus = value);
+                        },
                       ),
-                      onDeleted: () => setState(() {
-                        _startDate = null;
-                        _endDate = null;
-                      }),
-                    ),
-                ],
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                elevation: 8,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: StreamBuilder<List<QueryLog>>(
+                    stream: _isSupervisor
+                        ? (_selectedStatus != null
+                            ? _queryService.getQueriesByStatus(_selectedStatus!)
+                            : _queryService.getAllQueries())
+                        : _queryService.getAssignedQueries(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(child: Text('Error: ${snapshot.error}'));
+                      }
+
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      final queries = snapshot.data!;
+                      if (queries.isEmpty) {
+                        return const Center(child: Text('No queries found'));
+                      }
+
+                      return ListView.builder(
+                        itemCount: queries.length,
+                        itemBuilder: (context, index) {
+                          final query = queries[index];
+                          return Card(
+                            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: _getStatusColor(query.status),
+                                child: Icon(_getStatusIcon(query.status), color: Colors.white),
+                              ),
+                              title: Text(query.query),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Status: ${query.status.toString().split('.').last.toUpperCase()}'),
+                                  Text('Time: ${DateFormat('yyyy-MM-dd HH:mm').format(query.timestamp)}'),
+                                  if (query.assignedTo != null)
+                                    Text('Assigned To: ${query.assignedTo}'),
+                                  if (query.response != null)
+                                    Text('Response: ${query.response}'),
+                                  if (query.error != null)
+                                    Text('Error: ${query.error}', style: const TextStyle(color: Colors.red)),
+                                ],
+                              ),
+                              trailing: _isSupervisor
+                                  ? PopupMenuButton(
+                                      itemBuilder: (context) => [
+                                        if (query.status == QueryStatus.pending)
+                                          const PopupMenuItem(
+                                            value: 'assign',
+                                            child: Text('Assign to Agent'),
+                                          ),
+                                        if (query.status != QueryStatus.resolved)
+                                          const PopupMenuItem(
+                                            value: 'delete',
+                                            child: Text('Delete'),
+                                          ),
+                                      ],
+                                      onSelected: (value) {
+                                        if (value == 'assign') {
+                                          _assignQuery(query.id);
+                                        } else if (value == 'delete') {
+                                          _deleteQuery(query.id);
+                                        }
+                                      },
+                                    )
+                                  : PopupMenuButton(
+                                      itemBuilder: (context) => [
+                                        if (query.status == QueryStatus.assigned)
+                                          const PopupMenuItem(
+                                            value: 'in_progress',
+                                            child: Text('Mark as In Progress'),
+                                          ),
+                                        if (query.status == QueryStatus.inProgress)
+                                          const PopupMenuItem(
+                                            value: 'resolved',
+                                            child: Text('Mark as Resolved'),
+                                          ),
+                                      ],
+                                      onSelected: (value) {
+                                        if (value == 'in_progress') {
+                                          _updateQueryStatus(query.id, QueryStatus.inProgress);
+                                        } else if (value == 'resolved') {
+                                          _updateQueryStatus(query.id, QueryStatus.resolved);
+                                        }
+                                      },
+                                    ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
-          Expanded(
-            child: StreamBuilder<List<QueryLog>>(
-              stream: _selectedStatus != null
-                  ? _queryService.getQueriesByStatus(_selectedStatus!)
-                  : isSupervisor
-                      ? _queryService.getAllQueries()
-                      : _queryService.getUserQueries(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final queries = snapshot.data!;
-                if (queries.isEmpty) {
-                  return const Center(child: Text('No queries found'));
-                }
-
-                return ListView.builder(
-                  itemCount: queries.length,
-                  itemBuilder: (context, index) {
-                    final query = queries[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      child: ListTile(
-                        title: Text(query.query),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Status: ${query.status.toString().split('.').last}'),
-                            Text('Role: ${query.userRole}'),
-                            Text(
-                              'Time: ${query.timestamp.toString().split('.')[0]}',
-                            ),
-                            if (query.response != null)
-                              Text('Response: ${query.response}'),
-                            if (query.error != null)
-                              Text(
-                                'Error: ${query.error}',
-                                style: const TextStyle(color: Colors.red),
-                              ),
-                          ],
-                        ),
-                        isThreeLine: true,
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildFilterSheet() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'Filter Queries',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          DropdownButtonFormField<QueryStatus>(
-            value: _selectedStatus,
-            decoration: const InputDecoration(
-              labelText: 'Status',
-              border: OutlineInputBorder(),
-            ),
-            items: QueryStatus.values.map((status) {
-              return DropdownMenuItem(
-                value: status,
-                child: Text(status.toString().split('.').last),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() => _selectedStatus = value);
-              Navigator.pop(context);
-            },
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              _selectDateRange();
-              Navigator.pop(context);
-            },
-            child: const Text('Select Date Range'),
-          ),
-        ],
-      ),
-    );
+  Color _getStatusColor(QueryStatus status) {
+    switch (status) {
+      case QueryStatus.pending:
+        return Colors.orange;
+      case QueryStatus.assigned:
+        return Colors.blue;
+      case QueryStatus.inProgress:
+        return Colors.purple;
+      case QueryStatus.resolved:
+        return Colors.green;
+      case QueryStatus.failed:
+        return Colors.red;
+    }
   }
-} 
+
+  IconData _getStatusIcon(QueryStatus status) {
+    switch (status) {
+      case QueryStatus.pending:
+        return Icons.pending;
+      case QueryStatus.assigned:
+        return Icons.assignment;
+      case QueryStatus.inProgress:
+        return Icons.work;
+      case QueryStatus.resolved:
+        return Icons.check_circle;
+      case QueryStatus.failed:
+        return Icons.error;
+    }
+  }
+}

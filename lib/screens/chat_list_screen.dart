@@ -9,110 +9,67 @@ class ChatListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chatService = Provider.of<ChatService>(context);
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chats'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _showNewChatDialog(context),
-          ),
-        ],
-      ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: chatService.getUserChats(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final chats = snapshot.data!;
-          if (chats.isEmpty) {
-            return const Center(child: Text('No chats yet'));
-          }
-
-          return ListView.builder(
-            itemCount: chats.length,
-            itemBuilder: (context, index) {
-              final chat = chats[index];
-              return ListTile(
-                title: Text('Chat ${index + 1}'),
-                subtitle: Text(chat['lastMessage'] ?? 'No messages yet'),
-                trailing: chat['lastMessageTime'] != null
-                    ? Text(
-                        _formatTimestamp(chat['lastMessageTime']),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      )
-                    : null,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ChatRoomScreen(chatId: chat['id']),
-                    ),
-                  );
-                },
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _showNewChatDialog(BuildContext context) async {
-    final chatService = Provider.of<ChatService>(context, listen: false);
-    final TextEditingController controller = TextEditingController();
-    return showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('New Chat'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'Enter participant IDs (comma-separated)',
-          ),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF8F5CFF), Color(0xFF5B7CFA)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              if (controller.text.isNotEmpty) {
-                final participantIds = controller.text
-                    .split(',')
-                    .map((id) => id.trim())
-                    .toList();
-                try {
-                  final chatId = await chatService.createChatRoom(participantIds);
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ChatRoomScreen(chatId: chatId),
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error: ${e.toString()}')),
-                    );
-                  }
-                }
-              }
-            },
-            child: const Text('Create'),
-          ),
-        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: chatService.getUserChats(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: \\${snapshot.error}'));
+            }
+
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final chats = snapshot.data!;
+            if (chats.isEmpty) {
+              return const Center(child: Text('No chats yet'));
+            }
+
+            return ListView.builder(
+              itemCount: chats.length,
+              itemBuilder: (context, index) {
+                final chat = chats[index];
+                return Card(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  elevation: 6,
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blueAccent,
+                      child: Icon(Icons.chat, color: Colors.white),
+                    ),
+                    title: Text('Chat \\${index + 1}', style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(chat['lastMessage'] ?? 'No messages yet'),
+                    trailing: chat['lastMessageTime'] != null
+                        ? Text(
+                            _formatTimestamp(chat['lastMessageTime']),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          )
+                        : null,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChatRoomScreen(chatId: chat['id']),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -120,6 +77,6 @@ class ChatListScreen extends StatelessWidget {
   String _formatTimestamp(dynamic timestamp) {
     if (timestamp == null) return '';
     final date = timestamp.toDate();
-    return '${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    return '\\${date.hour}:\\${date.minute.toString().padLeft(2, '0')}';
   }
 } 

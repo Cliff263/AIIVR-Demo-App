@@ -12,7 +12,12 @@
           "package_name": "aiivr.app.demo"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1078282133118-e2f7psf1tio53cavao9uuv2ntpqsenac.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBLY8u_lGy-aFlOlNv61f4_ffCI8ox06GU"

@@ -4,9 +4,9 @@ import '../services/auth_service.dart';
 import '../services/chat_service.dart';
 import '../services/query_logging_service.dart';
 import '../services/sms_service.dart';
-import 'auth/login_screen.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +18,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   late List<Widget> _screens;
+  bool _isSupervisor = false;
 
   @override
   void initState() {
@@ -25,66 +26,115 @@ class _HomeScreenState extends State<HomeScreen> {
     _initializeScreens();
   }
 
-  void _initializeScreens() {
+  Future<void> _initializeScreens() async {
     final authService = Provider.of<AuthService>(context, listen: false);
-    final isSupervisor = authService.currentUser?.email?.contains('supervisor') ?? false;
-
-    _screens = [
-      const QueryLoggingScreen(),
-      const SMSScreen(),
-      const ChatScreen(),
-      if (isSupervisor) const UserManagementScreen(),
-    ];
+    final userRole = await authService.getUserRole();
+    setState(() {
+      _isSupervisor = userRole == UserRole.supervisor;
+      _screens = [
+        const QueryLoggingScreen(),
+        const SMSScreen(),
+        const ChatScreen(),
+        if (_isSupervisor) const UserManagementScreen(),
+      ];
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
-    final isSupervisor = authService.currentUser?.email?.contains('supervisor') ?? false;
+    final userName = authService.currentUser?.email?.split('@').first ?? 'User';
+    final userRole = _isSupervisor ? 'Supervisor' : 'Agent';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('AIIVR Companion'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final navigator = Navigator.of(context);
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF8F5CFF), Color(0xFF5B7CFA)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: PreferredSize(
+          preferredSize: const Size.fromHeight(90),
+          child: TopNavbar(
+            userName: userName,
+            userRole: userRole,
+            onLogout: () async {
               final authService = Provider.of<AuthService>(context, listen: false);
               await authService.signOut();
               if (!mounted) return;
-              navigator.pushReplacement(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
+              Navigator.pushReplacementNamed(context, '/signin');
             },
+            onProfileTap: () {},
+            isOnline: authService.currentUser != null,
           ),
-        ],
-      ),
-      body: _screens[_currentIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          setState(() => _currentIndex = index);
-        },
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.history),
-            label: 'Query Logs',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.sms),
-            label: 'SMS',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.chat),
-            label: 'Chat',
-          ),
-          if (isSupervisor)
-            const NavigationDestination(
-              icon: Icon(Icons.people),
-              label: 'Users',
+        ),
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: MetricsCard(isSupervisor: _isSupervisor),
             ),
-        ],
+            const SizedBox(height: 8),
+            Expanded(
+              child: Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                elevation: 8,
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: _screens[_currentIndex],
+                ),
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF8F5CFF),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha((0.1 * 255).toInt()),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: NavigationBar(
+            backgroundColor: Colors.transparent,
+            selectedIndex: _currentIndex,
+            onDestinationSelected: (index) {
+              setState(() => _currentIndex = index);
+            },
+            elevation: 0,
+            height: 65,
+            indicatorColor: Colors.white.withAlpha((0.2 * 255).toInt()),
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            destinations: [
+              const NavigationDestination(
+                icon: Icon(Icons.history_outlined, color: Colors.white),
+                selectedIcon: Icon(Icons.history, color: Colors.white),
+                label: 'Queries',
+              ),
+              const NavigationDestination(
+                icon: Icon(Icons.sms_outlined, color: Colors.white),
+                selectedIcon: Icon(Icons.sms, color: Colors.white),
+                label: 'SMS',
+              ),
+              const NavigationDestination(
+                icon: Icon(Icons.chat_outlined, color: Colors.white),
+                selectedIcon: Icon(Icons.chat, color: Colors.white),
+                label: 'Chat',
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -283,12 +333,40 @@ class ChatScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final chatService = Provider.of<ChatService>(context);
     final messageController = TextEditingController();
-
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final userId = authService.currentUser?.uid;
+    final bool isOnline = userId != null;
+    final DateTime? lastSeen = !isOnline ? DateTime.now().subtract(const Duration(minutes: 5)) : null; // Placeholder for last seen
+    String statusText;
+    if (isOnline) {
+      statusText = 'Online';
+    } else if (lastSeen != null) {
+      statusText = 'Last seen: ${DateFormat('yyyy-MM-dd HH:mm').format(lastSeen)}';
+    } else {
+      statusText = 'Offline';
+    }
+    // For demo, use a chat room ID based on userId or a default
+    final chatRoomId = userId ?? 'system';
     return Column(
       children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          color: Colors.white,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Chat', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              Text(
+                statusText,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
         Expanded(
           child: StreamBuilder(
-            stream: chatService.getMessages('system'), // Replace with actual receiver ID
+            stream: chatService.getMessages(chatRoomId),
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return Center(child: Text('Error: ${snapshot.error}'));
@@ -299,14 +377,16 @@ class ChatScreen extends StatelessWidget {
               }
 
               final messages = snapshot.data!;
-              
+
               return ListView.builder(
                 reverse: true,
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
                   final message = messages[index];
-                  final isMe = message.author.id == 'current_user_id'; // Replace with actual user ID
+                  final isMe = userId != null && message.author.id == userId;
                   final text = (message is types.TextMessage) ? message.text : '';
+                  final int? createdAt = (message is types.TextMessage) ? message.createdAt : null;
+                  final DateTime? msgTime = createdAt != null ? DateTime.fromMillisecondsSinceEpoch(createdAt) : null;
                   return Align(
                     alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                     child: Container(
@@ -319,11 +399,21 @@ class ChatScreen extends StatelessWidget {
                         color: isMe ? Colors.blue : Colors.grey[300],
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Text(
-                        text,
-                        style: TextStyle(
-                          color: isMe ? Colors.white : Colors.black,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            text,
+                            style: TextStyle(
+                              color: isMe ? Colors.white : Colors.black,
+                            ),
+                          ),
+                          if (msgTime != null)
+                            Text(
+                              DateFormat('yyyy-MM-dd HH:mm').format(msgTime),
+                              style: const TextStyle(fontSize: 10, color: Colors.white70),
+                            ),
+                        ],
                       ),
                     ),
                   );
@@ -348,18 +438,18 @@ class ChatScreen extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.send),
                 onPressed: () async {
-                  if (messageController.text.isEmpty) return;
+                  if (messageController.text.isEmpty || userId == null) return;
 
                   try {
                     await chatService.sendMessage(
+                      chatRoomId,
                       messageController.text,
-                      'system', // Replace with actual receiver ID
                     );
                     messageController.clear();
                   } catch (e) {
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error: $e')),
+                      SnackBar(content: Text('Error: ${e.toString()}')),
                     );
                   }
                 },
@@ -407,6 +497,231 @@ class UserManagementScreen extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+class TopNavbar extends StatelessWidget implements PreferredSizeWidget {
+  final String userName;
+  final String userRole;
+  final VoidCallback onLogout;
+  final VoidCallback onProfileTap;
+  final bool isOnline;
+
+  const TopNavbar({
+    super.key,
+    required this.userName,
+    required this.userRole,
+    required this.onLogout,
+    required this.onProfileTap,
+    this.isOnline = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF8F5CFF), Color(0xFF5B7CFA)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.only(top: 36, left: 16, right: 16, bottom: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          GestureDetector(
+            onTap: onProfileTap,
+            child: Stack(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundImage: AssetImage('assets/avatar_placeholder.png'), // Replace with user image if available
+                ),
+                Positioned(
+                  bottom: 2,
+                  right: 2,
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: isOnline ? Colors.green : Colors.grey,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                userName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+              Text(
+                userRole.toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: onLogout,
+            tooltip: 'Logout',
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Size get preferredSize => const Size.fromHeight(90);
+}
+
+class MetricsCard extends StatelessWidget {
+  final bool isSupervisor;
+  const MetricsCard({super.key, required this.isSupervisor});
+
+  @override
+  Widget build(BuildContext context) {
+    final queryService = Provider.of<QueryLoggingService>(context);
+    final chatService = Provider.of<ChatService>(context);
+    final smsService = Provider.of<SMSService>(context);
+    
+    if (isSupervisor) {
+      // Supervisor metrics: online agents, queries breakdown, active chats
+      return StreamBuilder(
+        stream: queryService.getAllQueries(),
+        builder: (context, snapshot) {
+          final queries = snapshot.data ?? [];
+          final pending = queries.where((q) => q.status == QueryStatus.pending).length;
+          final assigned = queries.where((q) => q.status == QueryStatus.assigned).length;
+          final resolved = queries.where((q) => q.status == QueryStatus.resolved).length;
+          return StreamBuilder(
+            stream: queryService.getAgents(),
+            builder: (context, agentSnap) {
+              final agents = agentSnap.data ?? [];
+              final onlineAgents = agents.where((a) => a['isOnline'] == true).length;
+              return StreamBuilder(
+                stream: chatService.getUserChats(),
+                builder: (context, chatSnap) {
+                  final chats = chatSnap.data ?? [];
+                  return _MetricsLayout(
+                    metrics: [
+                      _MetricItem(label: 'Online Agents', value: onlineAgents.toString(), icon: Icons.people, color: Colors.green),
+                      _MetricItem(label: 'Queries', value: queries.length.toString(), icon: Icons.history, color: Colors.orange),
+                      _MetricItem(label: 'Pending', value: pending.toString(), icon: Icons.pending, color: Colors.amber),
+                      _MetricItem(label: 'Assigned', value: assigned.toString(), icon: Icons.assignment, color: Colors.blue),
+                      _MetricItem(label: 'Resolved', value: resolved.toString(), icon: Icons.check_circle, color: Colors.green),
+                      _MetricItem(label: 'Active Chats', value: chats.length.toString(), icon: Icons.chat, color: Colors.purple),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    } else {
+      // Agent metrics: assigned queries, active chats, SMS sent/received
+      return StreamBuilder(
+        stream: queryService.getAssignedQueries(),
+        builder: (context, snapshot) {
+          final queries = snapshot.data ?? [];
+          final pending = queries.where((q) => q.status == QueryStatus.pending).length;
+          final assigned = queries.where((q) => q.status == QueryStatus.assigned).length;
+          final inProgress = queries.where((q) => q.status == QueryStatus.inProgress).length;
+          final resolved = queries.where((q) => q.status == QueryStatus.resolved).length;
+          return StreamBuilder(
+            stream: chatService.getUserChats(),
+            builder: (context, chatSnap) {
+              final chats = chatSnap.data ?? [];
+              return StreamBuilder(
+                stream: smsService.getUserMessages(),
+                builder: (context, smsSnap) {
+                  final sms = smsSnap.data ?? [];
+                  final sent = sms.where((m) => m['status'] == 'delivered').length;
+                  final received = sms.where((m) => m['status'] == 'received').length;
+                  return _MetricsLayout(
+                    metrics: [
+                      _MetricItem(label: 'Assigned', value: assigned.toString(), icon: Icons.assignment, color: Colors.blue),
+                      _MetricItem(label: 'Pending', value: pending.toString(), icon: Icons.pending, color: Colors.amber),
+                      _MetricItem(label: 'In Progress', value: inProgress.toString(), icon: Icons.work, color: Colors.purple),
+                      _MetricItem(label: 'Resolved', value: resolved.toString(), icon: Icons.check_circle, color: Colors.green),
+                      _MetricItem(label: 'Active Chats', value: chats.length.toString(), icon: Icons.chat, color: Colors.purple),
+                      _MetricItem(label: 'SMS Sent', value: sent.toString(), icon: Icons.sms, color: Colors.green),
+                      _MetricItem(label: 'SMS Received', value: received.toString(), icon: Icons.sms_failed, color: Colors.red),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    }
+  }
+}
+
+class _MetricsLayout extends StatelessWidget {
+  final List<_MetricItem> metrics;
+  const _MetricsLayout({required this.metrics});
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      elevation: 8,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Wrap(
+          alignment: WrapAlignment.spaceEvenly,
+          spacing: 24,
+          runSpacing: 12,
+          children: metrics,
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricItem extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  const _MetricItem({required this.label, required this.value, required this.icon, required this.color});
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CircleAvatar(
+          backgroundColor: color.withAlpha((0.1 * 255).toInt()),
+          child: Icon(icon, color: color, size: 28),
+        ),
+        const SizedBox(height: 6),
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: color)),
+        Text(label, style: const TextStyle(fontSize: 13)),
+      ],
     );
   }
 } 

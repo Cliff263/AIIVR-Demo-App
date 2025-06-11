@@ -4,8 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 enum QueryStatus {
   pending,
-  processing,
-  completed,
+  assigned,
+  inProgress,
+  resolved,
   failed
 }
 
@@ -18,6 +19,10 @@ class QueryLog {
   final DateTime timestamp;
   final String? response;
   final String? error;
+  final String? assignedTo;
+  final String? assignedBy;
+  final DateTime? assignedAt;
+  final DateTime? resolvedAt;
 
   QueryLog({
     required this.id,
@@ -28,6 +33,10 @@ class QueryLog {
     required this.timestamp,
     this.response,
     this.error,
+    this.assignedTo,
+    this.assignedBy,
+    this.assignedAt,
+    this.resolvedAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -40,6 +49,10 @@ class QueryLog {
       'timestamp': timestamp,
       'response': response,
       'error': error,
+      'assignedTo': assignedTo,
+      'assignedBy': assignedBy,
+      'assignedAt': assignedAt,
+      'resolvedAt': resolvedAt,
     };
   }
 
@@ -55,6 +68,10 @@ class QueryLog {
       timestamp: (map['timestamp'] as Timestamp).toDate(),
       response: map['response'],
       error: map['error'],
+      assignedTo: map['assignedTo'],
+      assignedBy: map['assignedBy'],
+      assignedAt: map['assignedAt'] != null ? (map['assignedAt'] as Timestamp).toDate() : null,
+      resolvedAt: map['resolvedAt'] != null ? (map['resolvedAt'] as Timestamp).toDate() : null,
     );
   }
 }
@@ -114,56 +131,105 @@ class QueryLoggingService extends ChangeNotifier {
     });
   }
 
-  // Create a new query log
+  // Create a new query (for agents)
   Future<QueryLog> createQuery(String query) async {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception('User not authenticated');
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
 
-    // Get user role from Firestore
-    final userDoc = await _firestore.collection('users').doc(user.uid).get();
-    final userRole = userDoc.get('role') as String;
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      final userRole = userDoc.get('role') as String;
+      if (userRole != 'agent') throw Exception('Only agents can create queries');
 
-    final queryLog = QueryLog(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      userId: user.uid,
-      userRole: userRole,
-      query: query,
-      status: QueryStatus.pending,
-      timestamp: DateTime.now(),
-    );
+      final queryLog = QueryLog(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        userId: user.uid,
+        userRole: userRole,
+        query: query,
+        status: QueryStatus.pending,
+        timestamp: DateTime.now(),
+      );
 
-    await _firestore
-        .collection('queries')
-        .doc(queryLog.id)
-        .set(queryLog.toMap());
+      await _firestore
+          .collection('queries')
+          .doc(queryLog.id)
+          .set(queryLog.toMap());
 
-    return queryLog;
+      return queryLog;
+    } catch (e) {
+      rethrow;
+    }
   }
 
-  // Update query status
+  // Assign query to agent (for supervisors)
+  Future<void> assignQuery(String queryId, String agentId) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      final userRole = userDoc.get('role') as String;
+      if (userRole != 'supervisor') throw Exception('Only supervisors can assign queries');
+
+      final agentDoc = await _firestore.collection('users').doc(agentId).get();
+      if (!agentDoc.exists || agentDoc.get('role') != 'agent') {
+        throw Exception('Invalid agent ID');
+      }
+
+      await _firestore.collection('queries').doc(queryId).update({
+        'status': QueryStatus.assigned.toString().split('.').last,
+        'assignedTo': agentId,
+        'assignedBy': user.uid,
+        'assignedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Update query status (for agents)
   Future<void> updateQueryStatus(
     String queryId,
     QueryStatus status, {
     String? response,
     String? error,
   }) async {
-    final updates = {
-      'status': status.toString().split('.').last,
-      if (response != null) 'response': response,
-      if (error != null) 'error': error,
-    };
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
 
-    await _firestore.collection('queries').doc(queryId).update(updates);
+      final queryDoc = await _firestore.collection('queries').doc(queryId).get();
+      if (!queryDoc.exists) throw Exception('Query not found');
+
+      final query = QueryLog.fromMap(queryDoc.data()!);
+      if (query.assignedTo != user.uid) {
+        throw Exception('You are not assigned to this query');
+      }
+
+      final Map<String, dynamic> updates = {
+        'status': status.toString().split('.').last,
+        if (response != null) 'response': response,
+        if (error != null) 'error': error,
+      };
+
+      if (status == QueryStatus.resolved) {
+        updates['resolvedAt'] = FieldValue.serverTimestamp();
+      }
+
+      await _firestore.collection('queries').doc(queryId).update(updates);
+    } catch (e) {
+      rethrow;
+    }
   }
 
-  // Get queries for current user
-  Stream<List<QueryLog>> getUserQueries() {
+  // Get assigned queries (for agents)
+  Stream<List<QueryLog>> getAssignedQueries() {
     final user = _auth.currentUser;
-    if (user == null) throw Exception('User not authenticated');
+    if (user == null) return Stream.value([]);
 
     return _firestore
         .collection('queries')
-        .where('userId', isEqualTo: user.uid)
+        .where('assignedTo', isEqualTo: user.uid)
         .orderBy('timestamp', descending: true)
         .snapshots()
         .map((snapshot) {
@@ -186,7 +252,7 @@ class QueryLoggingService extends ChangeNotifier {
     });
   }
 
-  // Get queries by status
+  // Get queries by status (for supervisors)
   Stream<List<QueryLog>> getQueriesByStatus(QueryStatus status) {
     return _firestore
         .collection('queries')
@@ -198,6 +264,38 @@ class QueryLoggingService extends ChangeNotifier {
           .map((doc) => QueryLog.fromMap(doc.data()))
           .toList();
     });
+  }
+
+  // Get agents list (for supervisors)
+  Stream<List<Map<String, dynamic>>> getAgents() {
+    return _firestore
+        .collection('users')
+        .where('role', isEqualTo: 'agent')
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) => {
+                'id': doc.id,
+                ...doc.data(),
+              })
+          .toList();
+    });
+  }
+
+  // Delete query (for supervisors)
+  Future<void> deleteQuery(String queryId) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      final userRole = userDoc.get('role') as String;
+      if (userRole != 'supervisor') throw Exception('Only supervisors can delete queries');
+
+      await _firestore.collection('queries').doc(queryId).delete();
+    } catch (e) {
+      rethrow;
+    }
   }
 
   // Get queries by date range
